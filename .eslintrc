@@ -1,7 +1,11 @@
 {
   "env": {
-    "browser": true,
-    "node": true
+      "es6": true,
+      "node": true,
+      "amd": true
+  },
+  "compilerOptions": {
+    "target": "ES6"
   },
   "extends": "eslint:recommended",
   "rules": {

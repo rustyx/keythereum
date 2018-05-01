@@ -338,17 +338,17 @@ describe("Create random private key, salt and initialization vector", function (
     assert.property(dk, "privateKey");
     assert.isNotNull(dk.privateKey);
     assert.instanceOf(dk.privateKey, Buffer);
-    assert.strictEqual(dk.privateKey.length, params.keyBytes);
+    assert.strictEqual(dk.privateKey.length, params.keyBytes, "privateKey.length");
 
     assert.property(dk, "iv");
     assert.isNotNull(dk.iv);
     assert.instanceOf(dk.iv, Buffer);
-    assert.strictEqual(dk.iv.length, params.ivBytes);
+    assert.strictEqual(dk.iv.length, params.ivBytes, "iv.length");
 
     assert.property(dk, "salt");
     assert.isNotNull(dk.salt);
     assert.instanceOf(dk.salt, Buffer);
-    assert.strictEqual(dk.salt.length, params.keyBytes);
+    assert.strictEqual(dk.salt.length, params.keyBytes, "salt.length");
   };
 
   var runtests = function (i) {
@@ -360,9 +360,11 @@ describe("Create random private key, salt and initialization vector", function (
         test(keythereum.create(params), params);
 
         // asynchronous
-        keythereum.create(null, function (dk) {
+        keythereum.create(null, function (err, dk) {
+          if (err) throw Error(err);
           test(dk, keythereum.constants);
-          keythereum.create(params, function (dk) {
+          keythereum.create(params, function (err, dk) {
+            if (err) throw Error(err);
             test(dk, params);
             done();
           });
@@ -538,71 +540,26 @@ describe("Decryption", function () {
 describe("Key derivation", function () {
 
   var test = function (t) {
-    var pbkdf2, pbkdf2Sync;
-
-    before(function () {
-      pbkdf2 = keythereum.crypto.pbkdf2;
-      pbkdf2Sync = keythereum.crypto.pbkdf2Sync;
-    });
-
-    after(function () {
-      keythereum.crypto.pbkdf2 = pbkdf2;
-      keythereum.crypto.pbkdf2Sync = pbkdf2Sync;
-    });
-
-    it("using crypto: " + t.input.kdf, function (done) {
-      var derivedKey;
+    it("KDF " + t.input.kdf, function (done) {
       this.timeout(TIMEOUT);
-      keythereum.crypto.pbkdf2 = pbkdf2;
-      keythereum.crypto.pbkdf2Sync = pbkdf2Sync;
 
-      // synchronous
-      derivedKey = keythereum.deriveKey(
-        t.input.password,
-        t.input.salt,
-        { kdf: t.input.kdf }
-      );
-      if (derivedKey.error) return done(derivedKey);
-      assert.strictEqual(derivedKey.toString("hex"), t.expected);
-
-      // asynchronous
       keythereum.deriveKey(
         t.input.password,
         t.input.salt,
-        { kdf: t.input.kdf },
-        function (derivedKey) {
-          if (derivedKey.error) return done(derivedKey);
-          assert.strictEqual(derivedKey.toString("hex"), t.expected);
-          done();
-        }
-      );
-    });
-    it("using sjcl: " + t.input.kdf, function (done) {
-      var derivedKey;
-      this.timeout(TIMEOUT);
-      keythereum.crypto.pbkdf2 = undefined;
-      keythereum.crypto.pbkdf2Sync = undefined;
-
-      // synchronous
-      derivedKey = keythereum.deriveKey(
-        t.input.password,
-        t.input.salt,
         { kdf: t.input.kdf }
-      );
-      if (derivedKey.error) return done(derivedKey);
-      assert.strictEqual(derivedKey.toString("hex"), t.expected);
-
-      // asynchronous
-      keythereum.deriveKey(
+      ).then(derivedKey => {
+        assert.strictEqual(derivedKey.toString("hex"), t.expected);
+      }).catch(err => done(err))
+      .then(() => keythereum.deriveKey(
         t.input.password,
         t.input.salt,
         { kdf: t.input.kdf },
-        function (derivedKey) {
-          if (derivedKey.error) return done(derivedKey);
+        function (err, derivedKey) {
+          if (err) return done(err);
           assert.strictEqual(derivedKey.toString("hex"), t.expected);
           done();
         }
-      );
+      )).catch(err => done(err));
     });
   };
 
@@ -654,35 +611,32 @@ describe("Dump private key", function () {
   var test = function (t) {
 
     it(t.input.kdf, function (done) {
-      var keyObject;
       this.timeout(TIMEOUT);
 
-      // synchronous
-      keyObject = keythereum.dump(
-        t.input.password,
-        t.input.privateKey,
-        t.input.salt,
-        t.input.iv,
-        { kdf: t.input.kdf }
-      );
-      if (keyObject.error) return done(keyObject);
-      checkKeyObj.structure(keythereum, keyObject);
-      checkKeyObj.values(keythereum, t, keyObject);
-
-      // asynchronous
       keythereum.dump(
         t.input.password,
         t.input.privateKey,
         t.input.salt,
         t.input.iv,
+        { kdf: t.input.kdf }
+      ).then(keyObject => {
+        checkKeyObj.structure(keythereum, keyObject);
+        checkKeyObj.values(keythereum, t, keyObject);
+      }).catch(err => done(err))
+      .then(() => keythereum.dump(
+        t.input.password,
+        t.input.privateKey,
+        t.input.salt,
+        t.input.iv,
         { kdf: t.input.kdf },
-        function (keyObj) {
-          if (keyObj.error) return done(keyObj);
+        function (err, keyObj) {
+          if (err) throw Error(err);
           checkKeyObj.structure(keythereum, keyObj);
           checkKeyObj.values(keythereum, t, keyObj);
           done();
         }
-      );
+      )).catch(err => done(err));
+
     });
   };
   test({
@@ -786,8 +740,6 @@ describe("Export to file", function () {
 
   var keyObj;
 
-  if (keythereum.browser) return;
-
   keyObj = {
     address: "008aeeda4d805471df9b2a5b0f38a0c3bcba786b",
     crypto: {
@@ -810,66 +762,47 @@ describe("Export to file", function () {
   };
 
   it("export key to json file", function (done) {
-    var keypath, outfile;
+    var outfile;
     this.timeout(TIMEOUT);
 
-    // synchronous
-    keypath = keythereum.exportToFile(keyObj);
-    outfile = keypath.split("/");
-    assert.isArray(outfile);
-    outfile = outfile[outfile.length - 1];
-    assert.strictEqual(outfile.slice(0, 5), "UTC--");
-    assert.isAbove(outfile.indexOf(keyObj.address), -1);
-    fs.unlinkSync(keypath);
-
-    // asynchronous
-    keythereum.exportToFile(keyObj, null, function (keyPath) {
+    keythereum.exportToFile(keyObj).then(keypath => {
+      outfile = keypath.split("/");
+      assert.isArray(outfile);
+      outfile = outfile[outfile.length - 1];
+      assert.strictEqual(outfile.slice(0, 5), "UTC--");
+      assert.isAbove(outfile.indexOf(keyObj.address), -1);
+      fs.unlinkSync(keypath);
+    }).catch(err => done(err))
+    .then(() => keythereum.exportToFile(keyObj, null, function (err, keyPath) {
       var outFile = keyPath.split("/");
       assert.isArray(outFile);
       outFile = outFile[outFile.length - 1];
       assert.strictEqual(outFile.slice(0, 5), "UTC--");
       assert.isAbove(outFile.indexOf(keyObj.address), -1);
-      fs.unlink(keyPath, function (exc) {
-        if (exc) return done(exc);
-        done();
-      });
-    });
-  });
-  it("export key to json (browser)", function (done) {
-    var json;
-    this.timeout(TIMEOUT);
-    keythereum.browser = true;
-
-    // synchronous
-    json = keythereum.exportToFile(keyObj);
-    assert.strictEqual(json, JSON.stringify(keyObj));
-
-    // asynchronous
-    keythereum.exportToFile(keyObj, null, function (json) {
-      assert.strictEqual(json, JSON.stringify(keyObj));
-      keythereum.browser = false;
+      fs.unlinkSync(keyPath);
       done();
-    });
+    })).catch(err => done(err));
+
   });
 });
 
 describe("Import from keystore file", function () {
 
-  if (keythereum.browser) return;
-
   function test(t) {
     var label = "[" + t.expected.crypto.kdf + "] import " + t.input.address + " from file";
     it(label, function (done) {
-      var keyObject;
       this.timeout(TIMEOUT);
-      keyObject = keythereum.importFromFile(t.input.address, t.input.datadir);
-      checkKeyObj.structure(keythereum, keyObject);
-      checkKeyObj.values(keythereum, t, keyObject);
-      keythereum.importFromFile(t.input.address, t.input.datadir, function (keyObj) {
-        checkKeyObj.structure(keythereum, keyObj);
-        checkKeyObj.values(keythereum, t, keyObj);
-        done();
-      });
+      keythereum.importFromFile(t.input.address, t.input.datadir)
+      .then(keyObject => {
+        checkKeyObj.structure(keythereum, keyObject);
+        checkKeyObj.values(keythereum, t, keyObject);
+        keythereum.importFromFile(t.input.address, t.input.datadir, function (err, keyObj) {
+          if (err) throw Error(err);
+          checkKeyObj.structure(keythereum, keyObj);
+          checkKeyObj.values(keythereum, t, keyObj);
+          done();
+        });
+      }).catch(err => done(err));
     });
   }
 
@@ -1102,18 +1035,17 @@ describe("Recover plaintext private key from key object", function () {
     var keyObjectCrypto = t.input.keyObject.Crypto || t.input.keyObject.crypto;
     var label = "[" + keyObjectCrypto.kdf + "] "+ "recover key for " + t.input.keyObject.address;
     it(label, function (done) {
-      var dk;
       this.timeout(TIMEOUT);
 
-      // synchronous
-      dk = keythereum.recover(t.input.password, t.input.keyObject);
-      assert.strictEqual(dk.toString("hex"), t.expected);
-
-      // asynchronous
-      keythereum.recover(t.input.password, t.input.keyObject, function (dk) {
+      keythereum.recover(t.input.password, t.input.keyObject)
+      .then(dk => {
         assert.strictEqual(dk.toString("hex"), t.expected);
-        done();
-      });
+        keythereum.recover(t.input.password, t.input.keyObject, function (err, dk) {
+          if (err) throw Error(err);
+          assert.strictEqual(dk.toString("hex"), t.expected);
+          done();
+        });
+      }).catch(err => done(err));
     });
   };
 
